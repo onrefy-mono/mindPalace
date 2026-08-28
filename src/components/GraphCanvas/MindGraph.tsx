@@ -257,6 +257,8 @@ function isQuickDeleteNode(node: SimNode) {
   return node.nodeType === 'goal' || node.nodeType === 'task';
 }
 
+type BoxSelectMode = 'replace' | 'add' | 'remove';
+
 export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -959,6 +961,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
         if (event.type === 'wheel') return false;
         if (event.type === 'mousedown' && event.altKey) return false;
         if (event.type === 'mousedown' && event.shiftKey) return false;
+        if (event.type === 'mousedown' && event.button === 0 && isBackgroundTarget(event.target)) return false;
         return true;
       })
       .on('start', (event) => {
@@ -1051,7 +1054,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       y0: number;
       x1: number;
       y1: number;
-      additive: boolean;
+      mode: BoxSelectMode;
     } | null = null;
     let altPan: { startX: number; startY: number; tx: number; ty: number } | null = null;
     let groupDrag: GroupDragState | null = null;
@@ -1320,10 +1323,19 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       updateBoxSelectUi();
       const pickedNodeIds = pickNodesInBox();
       const pickedGroupIds = pickGroupsInBox();
-      if (boxSelect?.additive) {
+      if (boxSelect?.mode === 'add') {
         applySelectionVisual(
           [...new Set([...storeRef.current.selectedNodeIds, ...pickedNodeIds])],
           [...new Set([...storeRef.current.selectedGroupIds, ...pickedGroupIds])],
+        );
+        return;
+      }
+      if (boxSelect?.mode === 'remove') {
+        const pickedNodeSet = new Set(pickedNodeIds);
+        const pickedGroupSet = new Set(pickedGroupIds);
+        applySelectionVisual(
+          storeRef.current.selectedNodeIds.filter((id) => !pickedNodeSet.has(id)),
+          storeRef.current.selectedGroupIds.filter((id) => !pickedGroupSet.has(id)),
         );
         return;
       }
@@ -2056,11 +2068,17 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
         altPan = { startX: event.clientX, startY: event.clientY, tx: t.x, ty: t.y };
         return;
       }
-      if (event.shiftKey && isBoxSelectTarget(event.target)) {
+      if (event.button !== 0 || !isBoxSelectTarget(event.target)) return;
+      const mode: BoxSelectMode = event.shiftKey
+        ? 'add'
+        : event.ctrlKey || event.metaKey
+          ? 'remove'
+          : 'replace';
+      if (mode) {
         event.preventDefault();
         event.stopPropagation();
         const [x, y] = d3.pointer(event, root.node());
-        boxSelect = { x0: x, y0: y, x1: x, y1: y, additive: true };
+        boxSelect = { x0: x, y0: y, x1: x, y1: y, mode };
         updateBoxSelectPreview();
       }
     });
@@ -2112,10 +2130,17 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
           suppressBackgroundClick = true;
           const pickedNodeIds = pickNodesInBox();
           const pickedGroupIds = pickGroupsInBox();
-          if (boxSelect.additive) {
+          if (boxSelect.mode === 'add') {
             storeRef.current.setSelectedNodesAndGroups(
               [...new Set([...storeRef.current.selectedNodeIds, ...pickedNodeIds])],
               [...new Set([...storeRef.current.selectedGroupIds, ...pickedGroupIds])],
+            );
+          } else if (boxSelect.mode === 'remove') {
+            const pickedNodeSet = new Set(pickedNodeIds);
+            const pickedGroupSet = new Set(pickedGroupIds);
+            storeRef.current.setSelectedNodesAndGroups(
+              storeRef.current.selectedNodeIds.filter((id) => !pickedNodeSet.has(id)),
+              storeRef.current.selectedGroupIds.filter((id) => !pickedGroupSet.has(id)),
             );
           } else {
             storeRef.current.setSelectedNodesAndGroups(pickedNodeIds, pickedGroupIds);
@@ -3939,7 +3964,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
           <span className="text-amber-300">{linkHint}</span>
         ) : (
           <>
-            贴近节点边缘拖线建边 · Shift+P 创建 Network Box · A 整理多选 · Alt 平移 · {Math.round(zoomLevel * 100)}%
+            空白拖拽框选 · Shift 追加 · Ctrl 移除 · Alt 平移 · {Math.round(zoomLevel * 100)}%
           </>
         )}
       </div>
