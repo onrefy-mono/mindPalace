@@ -358,11 +358,7 @@ function syncDerivedGroupEdges(groups: NodeGroup[], edges: MindEdge[]): MindEdge
 const EDGE_LABEL_MODE_KEY = 'mind-palace-edge-label-mode';
 
 function readEdgeLabelMode(): boolean {
-  try {
-    return localStorage.getItem(EDGE_LABEL_MODE_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 function persistEdgeLabelMode(enabled: boolean) {
@@ -376,11 +372,7 @@ function persistEdgeLabelMode(enabled: boolean) {
 const GLOBAL_TEXT_MODE_KEY = 'mind-palace-global-text-mode';
 
 function readGlobalTextMode(): boolean {
-  try {
-    return localStorage.getItem(GLOBAL_TEXT_MODE_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 function persistGlobalTextMode(enabled: boolean) {
