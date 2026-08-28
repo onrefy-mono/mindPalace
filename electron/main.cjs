@@ -9,6 +9,9 @@ const path = require('node:path');
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
 const seedPath = path.join(rootDir, 'data', 'seed.json');
+const iconPath = fs.existsSync(path.join(distDir, 'app-icon.ico'))
+  ? path.join(distDir, 'app-icon.ico')
+  : path.join(rootDir, 'public', 'app-icon.ico');
 const dataDir = path.join(os.homedir(), '.mindpalace');
 const dataFile = process.env.MIND_PALACE_DATA_FILE
   ? path.resolve(process.env.MIND_PALACE_DATA_FILE)
@@ -23,6 +26,7 @@ const MIME = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.ico': 'image/x-icon',
 };
 
 function getFreePort() {
@@ -211,6 +215,7 @@ async function createWindow() {
     minHeight: 720,
     backgroundColor: '#020617',
     title: 'Mind Palace',
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

@@ -66,6 +66,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "public/app-icon.ico",
       "target": [
         "portable"
       ]
