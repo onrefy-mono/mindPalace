@@ -1,0 +1,48 @@
+{
+  "name": "mind-palace",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "npm run build && node --experimental-strip-types server/index.ts",
+    "perf:data": "node scripts/perf-generate-data.mjs",
+    "perf:build": "node scripts/perf-build.mjs",
+    "perf:browser": "node scripts/perf-browser.mjs",
+    "perf:box-drag": "node scripts/perf-box-drag.mjs",
+    "perf:panel-drag": "node scripts/perf-panel-drag.mjs",
+    "perf:canvas-pan": "node scripts/perf-canvas-pan.mjs",
+    "perf:canvas-scroll": "node scripts/perf-canvas-scroll.mjs",
+    "perf:compare": "node scripts/perf-compare.mjs",
+    "perf:open": "node scripts/perf-open.mjs",
+    "perf": "npm run perf:data && npm run perf:build && npm run perf:browser && npm run perf:open"
+  },
+  "dependencies": {
+    "d3": "^7.9.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "uuid": "^14.0.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.3.1",
+    "@types/d3": "^7.4.3",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "playwright": "^1.61.1",
+    "tailwindcss": "^4.3.1",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12"
+  }
+}

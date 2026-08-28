@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #020617;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.03);
+  }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2.4s ease-in-out infinite;
+}
+
+.mind-graph svg {
+  display: block;
+}
+
+.mind-graph .network-boxes {
+  pointer-events: all;
+}
+
+.mind-graph .network-box .box-title {
+  pointer-events: all;
+}
+
+.mind-graph .network-box .box-resize-handle {
+  pointer-events: all;
+}
+
+.mind-graph.is-wiring,
+.mind-graph.is-wiring * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mind-graph .node {
+  transition: opacity 0.25s ease;
+}
+
+.mind-graph .shape-body,
+.mind-graph .node-icon,
+.mind-graph .labels,
+.mind-graph .label-bg,
+.mind-graph .type-tag-bg,
+.mind-graph .edge-label-bg {
+  transition:
+    opacity 0.16s ease,
+    stroke 0.16s ease,
+    fill 0.16s ease;
+}
+
+.mind-graph .labels {
+  opacity: 0;
+}
+
+.mind-graph.global-text-mode .node .labels {
+  opacity: 1;
+}
+
+.mind-graph .shape-body {
+  opacity: 0;
+}
+
+.mind-graph .node:hover .labels,
+.mind-graph .node.show-label .labels {
+  opacity: 1;
+}
+
+.mind-graph .node:hover .shape-body,
+.mind-graph .node.is-focus .shape-body,
+.mind-graph .node.is-selected .shape-body,
+.mind-graph .node.is-link-source .shape-body,
+.mind-graph .node.is-link-target-preview .shape-body {
+  opacity: 1;
+}
+
+.mind-graph .node:hover .shape-body {
+  stroke: rgba(248, 250, 252, 0.86);
+}
+
+.mind-graph .node.is-link-target-preview .shape-body {
+  stroke: #38bdf8;
+  stroke-width: 3;
+}
+
+.mind-graph .node:hover .node-icon {
+  opacity: 1;
+}
+
+.mind-graph .node-hover-target {
+  pointer-events: all;
+}
+
+.mind-graph .graph-root.is-canvas-panning .link-hit,
+.mind-graph .graph-root.is-canvas-panning .edge-handles,
+.mind-graph .graph-root.is-canvas-panning .port-anchor {
+  pointer-events: none !important;
+}
+
+.mind-graph.performance-mode .graph-root.is-canvas-panning .links,
+.mind-graph.performance-mode .graph-root.is-canvas-panning .link-labels,
+.mind-graph.performance-mode .graph-root.is-canvas-panning .edge-handles,
+.mind-graph.performance-mode .graph-root.is-canvas-panning .labels {
+  opacity: 0;
+}
+
+.mind-graph .graph-root.is-canvas-panning .node,
+.mind-graph .graph-root.is-canvas-panning .shape-body,
+.mind-graph .graph-root.is-canvas-panning .node-icon,
+.mind-graph .graph-root.is-canvas-panning .labels,
+.mind-graph .graph-root.is-canvas-panning .label-bg,
+.mind-graph .graph-root.is-canvas-panning .type-tag-bg,
+.mind-graph .graph-root.is-canvas-panning .edge-label-bg {
+  transition: none;
+}
