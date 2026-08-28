@@ -12,7 +12,8 @@
 ## 快速开始
 
 ```bash
-cd D:\azeProjects\Projects\mind-palace
+git clone https://github.com/onrefy-mono/mindPalace.git
+cd mindPalace
 npm install
 npm run dev
 ```
