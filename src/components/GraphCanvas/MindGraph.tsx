@@ -2213,7 +2213,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
         (event.key === 'Delete' ||
           event.key === 'Del' ||
           event.key === 'Backspace' ||
-          event.code === 'Delete') &&
+          event.code === 'Delete' ||
+          event.key.toLowerCase() === 'x') &&
         !event.ctrlKey &&
         !event.metaKey &&
         !event.altKey

@@ -25,6 +25,15 @@ function isTypingTarget(target: EventTarget | null) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
 }
 
+function isPlainDeleteKey(event: KeyboardEvent) {
+  return (
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    (event.key === 'Delete' || event.key === 'Backspace' || event.key.toLowerCase() === 'x')
+  );
+}
+
 interface BoxViewRoute {
   groupId: string;
   viewId: string;
@@ -173,14 +182,14 @@ function App() {
         return;
       }
 
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      if (isPlainDeleteKey(e)) {
         if (readOnly) return;
         if (selectedEdgeId) {
           e.preventDefault();
           removeEdge(selectedEdgeId);
           return;
         }
-        if (selectedNodeId && e.key === 'Delete') {
+        if (selectedNodeId && (e.key === 'Delete' || e.key.toLowerCase() === 'x')) {
           e.preventDefault();
           removeNode(selectedNodeId);
           loadFocusItems();

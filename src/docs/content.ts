@@ -151,7 +151,7 @@ export const DOC_ARTICLES: DocArticle[] = [
             ['Ctrl+K', '打开快速捕获'],
             ['Tab', '在鼠标位置打开创建面板（同双击空白）'],
             ['Ctrl+F', '搜索跳转节点'],
-            ['Delete', '删除选中的边或节点'],
+            ['Delete / X', '删除选中的边或节点'],
             ['Esc', '关闭弹窗 / 取消连线模式'],
             ['Shift+P', '创建 Network Box'],
             ['拖拽空白', '框选并替换当前选择'],
