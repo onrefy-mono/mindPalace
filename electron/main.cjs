@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, Menu, nativeTheme, shell } = require('electron');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const http = require('node:http');
@@ -216,12 +216,20 @@ async function createWindow() {
     backgroundColor: '#020617',
     title: 'Mind Palace',
     icon: iconPath,
+    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#020617',
+      symbolColor: '#cbd5e1',
+      height: 32,
+    },
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
     },
   });
+  win.setMenuBarVisibility(false);
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
@@ -232,6 +240,9 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  nativeTheme.themeSource = 'dark';
+  Menu.setApplicationMenu(null);
+
   void createWindow();
 
   app.on('activate', () => {

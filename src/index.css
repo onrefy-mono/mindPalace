@@ -20,6 +20,32 @@ body {
   background: #020617;
 }
 
+body::before {
+  -webkit-app-region: drag;
+  content: '';
+  position: fixed;
+  z-index: 10000;
+  top: 0;
+  left: env(titlebar-area-x, 0);
+  width: env(titlebar-area-width, 100%);
+  height: env(titlebar-area-height, 0);
+  pointer-events: none;
+}
+
+#root {
+  box-sizing: border-box;
+  padding-top: env(titlebar-area-height, 0);
+}
+
+button,
+a,
+input,
+textarea,
+select,
+[role='button'] {
+  -webkit-app-region: no-drag;
+}
+
 @keyframes pulse-soft {
   0%,
   100% {
