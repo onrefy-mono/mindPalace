@@ -3,8 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "electron:dev": "node scripts/electron-dev.mjs",
+    "electron": "npm run build && electron electron/main.cjs",
+    "dist:win": "npm run build && electron-builder --win portable",
+    "pack:win": "npm run build && node scripts/prepare-electron-app.mjs && powershell -ExecutionPolicy Bypass -File scripts/build-electron-dir.ps1",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "npm run build && node --experimental-strip-types server/index.ts",
@@ -27,6 +32,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@electron/packager": "^20.3.0",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/d3": "^7.4.3",
@@ -35,6 +41,8 @@
     "@types/react-dom": "^19.2.3",
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^44.0.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -44,5 +52,26 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12"
+  },
+  "build": {
+    "appId": "com.onrefy.mindpalace",
+    "productName": "Mind Palace",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "data/seed.json",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "MindPalace-${version}-portable.exe"
+    }
   }
 }

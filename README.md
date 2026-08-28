@@ -20,6 +20,28 @@ npm run dev
 
 浏览器打开终端显示的本地地址（通常是 http://localhost:5173）。
 
+## 桌面客户端
+
+项目同时支持 Web 与 Electron 桌面壳：
+
+```bash
+npm run electron:dev
+```
+
+开发模式会启动 Vite 服务，并用 Electron 打开同一套本地 Web 应用。
+
+```bash
+npm run electron
+```
+
+本地桌面模式会先构建前端，再由 Electron 启动内置本地服务并打开窗口。
+
+```bash
+npm run pack:win
+```
+
+打包 Windows 目录版客户端，输出到 `release/Mind Palace-win32-x64/`，可双击其中的 `Mind Palace.exe`。
+
 详细使用说明见 **[USAGE.md](./USAGE.md)**。
 
 ## 项目结构
