@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { useFocusStore } from '../../stores/focusStore';
 import { useGraphStore } from '../../stores/graphStore';
-import { usePersistentState } from '../../hooks/usePersistentState';
 import {
   DOMAIN_LABELS,
   focusColor,
   type Domain,
   type FocusItem,
 } from '../../types';
+
+interface FocusPanelProps {
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+}
 
 function FocusCard({
   item,
@@ -149,12 +153,11 @@ function FocusCard({
   );
 }
 
-export function FocusPanel() {
+export function FocusPanel({ collapsed, onCollapsedChange }: FocusPanelProps) {
   const getOrdered = useFocusStore((s) => s.getOrdered);
   const reorder = useFocusStore((s) => s.reorder);
   const add = useFocusStore((s) => s.add);
   const addNode = useGraphStore((s) => s.addNode);
-  const [collapsed, setCollapsed] = usePersistentState('mind-palace-ui-focus-panel-collapsed', false);
   const [showForm, setShowForm] = useState(false);
   const [title, setTitle] = useState('');
   const [domain, setDomain] = useState<Domain>('work');
@@ -167,10 +170,10 @@ export function FocusPanel() {
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-9 shrink-0 flex-col items-center border-r border-white/10 bg-slate-950/80 backdrop-blur">
+      <aside className="flex h-full w-full shrink-0 flex-col items-center border-r border-white/10 bg-slate-950/80 backdrop-blur">
         <button
           type="button"
-          onClick={() => setCollapsed(false)}
+          onClick={() => onCollapsedChange(false)}
           className="flex h-9 w-full items-center justify-center border-b border-white/10 text-sm text-slate-300 hover:bg-white/5"
           title="展开关注区"
           aria-label="展开关注区"
@@ -207,13 +210,13 @@ export function FocusPanel() {
   };
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-r border-white/10 bg-slate-950/80 backdrop-blur">
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-white/10 bg-slate-950/80 backdrop-blur">
       <div className="border-b border-white/10 p-4">
         <div className="mb-1 flex items-center justify-between gap-2">
           <div className="text-xs uppercase tracking-widest text-slate-500">工作记忆</div>
           <button
             type="button"
-            onClick={() => setCollapsed(true)}
+            onClick={() => onCollapsedChange(true)}
             className="rounded border border-white/10 px-2 py-1 text-xs text-slate-400 hover:bg-white/5 hover:text-slate-200"
             title="折叠关注区"
             aria-label="折叠关注区"

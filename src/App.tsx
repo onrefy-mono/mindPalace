@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Group, Panel, Separator, usePanelCallbackRef } from 'react-resizable-panels';
 import { FocusPanel } from './components/FocusPanel/FocusPanel';
 import { FocusDetailPanel } from './components/FocusPanel/FocusDetailPanel';
 import { MindGraph } from './components/GraphCanvas/MindGraph';
@@ -39,6 +40,14 @@ interface BoxViewRoute {
   viewId: string;
 }
 
+function ResizeHandle() {
+  return (
+    <Separator className="group relative z-20 flex w-2 shrink-0 items-stretch justify-center bg-slate-950 outline-none transition-colors hover:bg-blue-500/10 focus-visible:bg-blue-500/15">
+      <div className="my-3 w-px bg-white/10 transition-colors group-hover:bg-blue-400/70 group-focus-visible:bg-blue-300" />
+    </Separator>
+  );
+}
+
 function readBoxViewRoute(): BoxViewRoute | null {
   const hash = window.location.hash.replace(/^#\/?/, '');
   const [page, groupId, viewId] = hash.split('/');
@@ -67,11 +76,17 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [docsOpen, setDocsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [focusCollapsed, setFocusCollapsed] = useState(true);
+  const [focusDetailCollapsed, setFocusDetailCollapsed] = useState(true);
+  const [graphDetailCollapsed, setGraphDetailCollapsed] = useState(true);
   const [ready, setReady] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [storagePath, setStoragePath] = useState('');
   const [readOnly, setReadOnly] = useState(false);
   const [boxViewRoute, setBoxViewRoute] = useState<BoxViewRoute | null>(() => readBoxViewRoute());
+  const [focusPanel, setFocusPanel] = usePanelCallbackRef();
+  const [focusDetailPanel, setFocusDetailPanel] = usePanelCallbackRef();
+  const [graphDetailPanel, setGraphDetailPanel] = usePanelCallbackRef();
 
   const openCreateNode = (context?: CreateNodeContext) => {
     if (readOnly) return;
@@ -207,6 +222,30 @@ function App() {
     }
   }, [activeFocusId, focusItems, setSelectedNode]);
 
+  useEffect(() => {
+    if (focusCollapsed) {
+      focusPanel?.collapse();
+    } else {
+      focusPanel?.expand();
+    }
+  }, [focusCollapsed, focusPanel]);
+
+  useEffect(() => {
+    if (focusDetailCollapsed) {
+      focusDetailPanel?.collapse();
+    } else {
+      focusDetailPanel?.expand();
+    }
+  }, [focusDetailCollapsed, focusDetailPanel]);
+
+  useEffect(() => {
+    if (graphDetailCollapsed) {
+      graphDetailPanel?.collapse();
+    } else {
+      graphDetailPanel?.expand();
+    }
+  }, [graphDetailCollapsed, graphDetailPanel]);
+
   if (bootError) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-slate-950 px-6 text-center text-slate-200">
@@ -243,18 +282,60 @@ function App() {
         storagePath={storagePath}
         readOnly={readOnly}
       />
-      <div className="flex min-h-0 flex-1">
-        <FocusPanel />
-        <FocusDetailPanel />
-        <main className="relative flex min-w-0 flex-1 flex-col">
-          <GraphBreadcrumb />
-          <div className="relative min-h-0 flex-1">
-            <MindGraph onOpenCreateNode={openCreateNode} />
-            <SelectionToolbar />
-          </div>
-        </main>
-        <GraphDetailPanel />
-      </div>
+      <Group
+        id="mind-palace-main-layout"
+        orientation="horizontal"
+        className="min-h-0 flex-1"
+      >
+        <Panel
+          id="focus"
+          panelRef={setFocusPanel}
+          defaultSize="300px"
+          minSize="240px"
+          collapsible
+          collapsedSize="48px"
+        >
+          <FocusPanel collapsed={focusCollapsed} onCollapsedChange={setFocusCollapsed} />
+        </Panel>
+        <ResizeHandle />
+        <Panel
+          id="focusDetail"
+          panelRef={setFocusDetailPanel}
+          defaultSize="280px"
+          minSize="240px"
+          collapsible
+          collapsedSize="48px"
+        >
+          <FocusDetailPanel
+            collapsed={focusDetailCollapsed}
+            onCollapsedChange={setFocusDetailCollapsed}
+          />
+        </Panel>
+        <ResizeHandle />
+        <Panel id="graph" defaultSize="48%" minSize="420px">
+          <main className="relative flex h-full min-w-0 flex-col">
+            <GraphBreadcrumb />
+            <div className="relative min-h-0 flex-1">
+              <MindGraph onOpenCreateNode={openCreateNode} />
+              <SelectionToolbar />
+            </div>
+          </main>
+        </Panel>
+        <ResizeHandle />
+        <Panel
+          id="graphDetail"
+          panelRef={setGraphDetailPanel}
+          defaultSize="320px"
+          minSize="260px"
+          collapsible
+          collapsedSize="48px"
+        >
+          <GraphDetailPanel
+            collapsed={graphDetailCollapsed}
+            onCollapsedChange={setGraphDetailCollapsed}
+          />
+        </Panel>
+      </Group>
       <QuickCapture open={!readOnly && captureOpen} onClose={() => setCaptureOpen(false)} />
       <CreateNodeModal
         open={!readOnly && createNodeOpen}

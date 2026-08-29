@@ -1,6 +1,5 @@
 import { useFocusStore } from '../../stores/focusStore';
 import { useGraphStore } from '../../stores/graphStore';
-import { usePersistentState } from '../../hooks/usePersistentState';
 import { DOMAIN_LABELS, focusColor } from '../../types';
 
 const FOCUS_COLOR_PRESETS = [
@@ -22,11 +21,12 @@ const FOCUS_COLOR_PRESETS = [
   '#f8fafc',
 ];
 
-export function FocusDetailPanel() {
-  const [collapsed, setCollapsed] = usePersistentState(
-    'mind-palace-ui-focus-detail-collapsed',
-    false,
-  );
+interface FocusDetailPanelProps {
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+}
+
+export function FocusDetailPanel({ collapsed, onCollapsedChange }: FocusDetailPanelProps) {
   const selectedId = useFocusStore((s) => s.selectedId);
   const activeId = useFocusStore((s) => s.activeId);
   const focusItems = useFocusStore((s) => s.items);
@@ -39,10 +39,10 @@ export function FocusDetailPanel() {
 
   if (collapsed) {
     return (
-      <aside className="flex h-full w-9 shrink-0 flex-col items-center border-r border-white/10 bg-slate-950/60">
+      <aside className="flex h-full w-full shrink-0 flex-col items-center border-r border-white/10 bg-slate-950/60">
         <button
           type="button"
-          onClick={() => setCollapsed(false)}
+          onClick={() => onCollapsedChange(false)}
           className="flex h-9 w-full items-center justify-center border-b border-white/10 text-sm text-slate-300 hover:bg-white/5"
           title="展开关注详情"
           aria-label="展开关注详情"
@@ -58,13 +58,13 @@ export function FocusDetailPanel() {
 
   if (!selectedFocus) {
     return (
-      <aside className="flex h-full w-72 shrink-0 flex-col border-r border-white/10 bg-slate-950/60">
+      <aside className="flex h-full w-full shrink-0 flex-col border-r border-white/10 bg-slate-950/60">
         <div className="border-b border-white/10 p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs uppercase tracking-widest text-slate-500">关注详情</div>
             <button
               type="button"
-              onClick={() => setCollapsed(true)}
+              onClick={() => onCollapsedChange(true)}
               className="rounded border border-white/10 px-2 py-1 text-xs text-slate-400 hover:bg-white/5 hover:text-slate-200"
               title="折叠关注详情"
               aria-label="折叠关注详情"
@@ -88,13 +88,13 @@ export function FocusDetailPanel() {
     .filter(Boolean);
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-white/10 bg-slate-950/60">
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-white/10 bg-slate-950/60">
       <div className="border-b border-white/10 p-4">
         <div className="flex items-center justify-between gap-2">
           <div className="text-xs uppercase tracking-widest text-slate-500">关注详情</div>
           <button
             type="button"
-            onClick={() => setCollapsed(true)}
+            onClick={() => onCollapsedChange(true)}
             className="rounded border border-white/10 px-2 py-1 text-xs text-slate-400 hover:bg-white/5 hover:text-slate-200"
             title="折叠关注详情"
             aria-label="折叠关注详情"
