@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useGraphStore } from '../../stores/graphStore';
 import { typeIcon } from '../../lib/d3Graph';
 import { getDefaultNewNodeConnection } from '../../lib/nodeConnection';
+import { readAiConfig } from '../../lib/ai/config';
 import {
   EDGE_TYPE_COLORS,
   EDGE_TYPE_LABELS,
@@ -21,13 +22,16 @@ interface CreateNodeModalProps {
 
 export function CreateNodeModal({ open, onClose, context }: CreateNodeModalProps) {
   const addNode = useGraphStore((s) => s.addNode);
+  const startGenerateNodeGroup = useGraphStore((s) => s.startGenerateNodeGroup);
   const selectedNodeId = useGraphStore((s) => s.selectedNodeId);
   const nodes = useGraphStore((s) => s.nodes);
+  const aiNodeGroupPreview = useGraphStore((s) => s.aiNodeGroupPreview);
   const [label, setLabel] = useState('');
   const [type, setType] = useState<NodeType>('concept');
   const [content, setContent] = useState('');
   const [connectToCurrent, setConnectToCurrent] = useState(true);
   const [connectEdgeType, setConnectEdgeType] = useState<EdgeType>('relates_to');
+  const [aiConfigured, setAiConfigured] = useState(false);
   const connectToId = context?.connectToId ?? selectedNodeId;
   const connectToNode = nodes.find((node) => node.id === connectToId);
   const defaultConnection = getDefaultNewNodeConnection(connectToNode);
@@ -50,6 +54,7 @@ export function CreateNodeModal({ open, onClose, context }: CreateNodeModalProps
       setContent('');
       setConnectToCurrent(!!connectToId);
       setConnectEdgeType(context?.connectEdgeType ?? getDefaultNewNodeConnection(connectToNode).edgeType);
+      setAiConfigured(Boolean(readAiConfig().apiKey.trim()));
     }
   }, [connectToId, connectToNode, context?.connectEdgeType, open]);
 
@@ -70,11 +75,19 @@ export function CreateNodeModal({ open, onClose, context }: CreateNodeModalProps
     onClose();
   };
 
+  const handleAiGenerate = () => {
+    if (!connectToId || !aiConfigured) return;
+    void startGenerateNodeGroup(connectToId, context?.x, context?.y);
+    onClose();
+  };
+
+  const aiRunning = aiNodeGroupPreview?.status === 'running';
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-8 pt-24 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
+        className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl"
       >
         <div className="mb-4">
           <div className="text-xs uppercase tracking-widest text-slate-500">创建节点</div>
@@ -155,6 +168,31 @@ export function CreateNodeModal({ open, onClose, context }: CreateNodeModalProps
                 <span className="text-xs text-slate-500">（需先选中一个节点）</span>
               )}
             </label>
+
+            {connectToId && connectToCurrent && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-emerald-400/20 bg-emerald-500/10 px-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-emerald-100">AI 生成节点组</div>
+                  <div className="mt-0.5 truncate text-[11px] text-emerald-100/70">
+                    生成预览 Box，批准后写入
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAiGenerate}
+                  disabled={!aiConfigured || aiRunning}
+                  className="shrink-0 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                >
+                  {aiRunning ? '生成中' : 'AI 生成'}
+                </button>
+              </div>
+            )}
+
+            {connectToId && connectToCurrent && !aiConfigured && (
+              <div className="mt-2 text-xs text-amber-100">
+                请先在顶部“设置”里配置 AI API Key。
+              </div>
+            )}
 
             {connectToId && connectToCurrent && (
               <div className="mt-3 space-y-2 border-t border-white/8 pt-3">

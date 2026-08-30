@@ -50,6 +50,7 @@ import {
 import { GraphLegend } from './GraphLegend';
 import { GraphContextMenu, type ContextMenuItem } from './GraphContextMenu';
 import { EdgeTypePicker } from './EdgeTypePicker';
+import { AiNodeGroupPreview } from './AiNodeGroupPreview';
 import { usePersistentState } from '../../hooks/usePersistentState';
 
 interface MindGraphProps {
@@ -426,6 +427,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   const activeFocus = focusItems.find((f) => f.id === activeFocusId);
 
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [reactZoomTransform, setReactZoomTransform] = useState<d3.ZoomTransform>(d3.zoomIdentity);
   const [performanceMode, setPerformanceMode] = usePersistentState(
     'mind-palace-ui-graph-performance-mode',
     false,
@@ -885,6 +887,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     const scheduleZoomRender = (transform: d3.ZoomTransform) => {
       pendingZoomTransform = transform;
       zoomTransformRef.current = transform;
+      setReactZoomTransform(transform);
       scheduleStoredGraphView();
       if (zoomFrame != null) return;
       zoomFrame = window.requestAnimationFrame(() => {
@@ -944,6 +947,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
         if (pendingZoomTransform) {
           lastZoomPercent = Math.round(pendingZoomTransform.k * 100);
           setZoomLevel(pendingZoomTransform.k);
+          setReactZoomTransform(pendingZoomTransform);
         }
       };
       if (delayMs > 0) {
@@ -988,6 +992,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
         }
         const transform = event.transform as d3.ZoomTransform;
         pendingZoomTransform = transform;
+        zoomTransformRef.current = transform;
+        setReactZoomTransform(transform);
         if (zoomFrame != null) {
           window.cancelAnimationFrame(zoomFrame);
           zoomFrame = null;
@@ -1004,6 +1010,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     zoomRef.current = zoom;
     svg.call(zoom.transform, savedTransform);
     applyZoomTransform(savedTransform);
+    setReactZoomTransform(savedTransform);
 
     svg.on('wheel.canvasZoom', (event: WheelEvent) => {
       event.preventDefault();
@@ -3768,6 +3775,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       <GraphLegend />
 
       <svg ref={svgRef} className="h-full w-full" />
+
+      <AiNodeGroupPreview transform={reactZoomTransform} />
 
       {boxSelectUi && (
         <div

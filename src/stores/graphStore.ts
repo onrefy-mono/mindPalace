@@ -19,6 +19,13 @@ import { captureHistorySnapshot } from '../lib/history';
 import { perfTime } from '../lib/perf';
 import { loadData, saveData } from '../lib/storage';
 import { resolveNewNodeConnection } from '../lib/nodeConnection';
+import { generateChatText } from '../lib/ai/client';
+import { readAiConfig } from '../lib/ai/config';
+import {
+  buildNodeGroupDraftMessages,
+  parseNodeGroupDraft,
+  type AiGeneratedNodeGroupDraft,
+} from '../lib/ai/nodeGroupDraft';
 import { useFocusStore } from './focusStore';
 
 interface AddNodeInput {
@@ -41,6 +48,38 @@ export interface PendingEdgeConnect {
   target_kind?: EdgeEndpointKind;
   x: number;
   y: number;
+}
+
+export interface AiNodeGroupPreviewNode {
+  tempId: string;
+  label: string;
+  type: NodeType;
+  content?: string;
+  tags?: string[];
+  x: number;
+  y: number;
+}
+
+export interface AiNodeGroupPreviewEdge {
+  sourceTempId: string | 'connected';
+  targetTempId: string | 'connected';
+  type: EdgeType;
+  label?: string;
+}
+
+export interface AiNodeGroupPreview {
+  id: string;
+  status: 'running' | 'ready' | 'error';
+  boxName: string;
+  connectedNodeId: string;
+  viewParentId: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  nodes: AiNodeGroupPreviewNode[];
+  edges: AiNodeGroupPreviewEdge[];
+  error?: string;
 }
 
 interface AddGroupInput {
@@ -74,6 +113,7 @@ interface GraphState {
   linkSourceId: string | null;
   linkSourceKind: EdgeEndpointKind;
   pendingEdgeConnect: PendingEdgeConnect | null;
+  aiNodeGroupPreview: AiNodeGroupPreview | null;
   edgeLabelMode: boolean;
   globalTextMode: boolean;
   createPointer: { x: number; y: number } | null;
@@ -105,6 +145,9 @@ interface GraphState {
   toggleEdgeLabelMode: () => void;
   toggleGlobalTextMode: () => void;
   setCreatePointer: (x: number, y: number) => void;
+  startGenerateNodeGroup: (connectToId: string, x?: number, y?: number) => Promise<void>;
+  approveAiNodeGroupPreview: () => void;
+  rejectAiNodeGroupPreview: () => void;
   addNode: (input: AddNodeInput) => MindNode;
   updateNode: (id: string, patch: Partial<MindNode>) => void;
   updateNodePosition: (id: string, x: number, y: number) => void;
@@ -170,6 +213,76 @@ function persistGraph(nodes: MindNode[], edges: MindEdge[], groups: NodeGroup[])
 
 function normalizeGroups(groups: NodeGroup[] | undefined): NodeGroup[] {
   return (groups ?? []).map((group, index) => normalizeNetworkGroup(group, index));
+}
+
+function createNodeGroupContext(
+  nodes: MindNode[],
+  edges: MindEdge[],
+  connectedNodeId: string,
+  viewParentId: string | null,
+) {
+  const connectedNode = nodes.find((node) => node.id === connectedNodeId);
+  if (!connectedNode) throw new Error('找不到连接节点');
+  const nearbyIds = new Set<string>();
+  const nearbyEdges: MindEdge[] = [];
+  for (const edge of edges) {
+    if (edge.derived_from_edge_id) continue;
+    if (edge.source === connectedNodeId) {
+      nearbyIds.add(edge.target);
+      nearbyEdges.push(edge);
+    } else if (edge.target === connectedNodeId) {
+      nearbyIds.add(edge.source);
+      nearbyEdges.push(edge);
+    }
+  }
+  return {
+    connectedNode,
+    nearbyNodes: [...nearbyIds]
+      .map((id) => nodes.find((node) => node.id === id))
+      .filter((node): node is MindNode => Boolean(node))
+      .slice(0, 12),
+    edges: nearbyEdges.slice(0, 16),
+    viewParentId,
+  };
+}
+
+function layoutNodeGroupDraft(
+  draft: AiGeneratedNodeGroupDraft,
+  connectedNodeId: string,
+  viewParentId: string | null,
+  x: number,
+  y: number,
+): AiNodeGroupPreview {
+  const count = draft.nodes.length;
+  const columns = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(count))));
+  const rows = Math.max(1, Math.ceil(count / columns));
+  const cellWidth = 150;
+  const cellHeight = 90;
+  const width = Math.max(360, columns * cellWidth + 80);
+  const height = Math.max(220, rows * cellHeight + 110);
+  const originX = x - width / 2;
+  const originY = y - height / 2;
+  return {
+    id: `ai-preview-${Date.now()}`,
+    status: 'ready',
+    boxName: draft.boxName,
+    connectedNodeId,
+    viewParentId,
+    x: originX,
+    y: originY,
+    width,
+    height,
+    nodes: draft.nodes.map((node, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      return {
+        ...node,
+        x: originX + 55 + column * cellWidth,
+        y: originY + 78 + row * cellHeight,
+      };
+    }),
+    edges: draft.edges,
+  };
 }
 
 function expandGroupsToIncludeNodes(
@@ -397,6 +510,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   linkSourceId: null,
   linkSourceKind: 'node',
   pendingEdgeConnect: null,
+  aiNodeGroupPreview: null,
   edgeLabelMode: readEdgeLabelMode(),
   globalTextMode: readGlobalTextMode(),
   createPointer: null,
@@ -409,6 +523,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       edges: syncDerivedGroupEdges(groups, data.edges),
       groups,
       viewParentId: null,
+      aiNodeGroupPreview: null,
     });
   },
 
@@ -426,6 +541,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       selectedGroupIds: [],
       linkSourceId: null,
       linkSourceKind: 'node',
+      aiNodeGroupPreview: null,
     });
   },
 
@@ -624,6 +740,164 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   setCreatePointer: (x, y) => set({ createPointer: { x, y } }),
+
+  startGenerateNodeGroup: async (connectToId, x, y) => {
+    const state = get();
+    const centerX = x ?? state.createPointer?.x ?? 0;
+    const centerY = y ?? state.createPointer?.y ?? 0;
+    const previewId = `ai-preview-${Date.now()}`;
+    const connectedNode = state.nodes.find((node) => node.id === connectToId);
+    if (!connectedNode) {
+      set({
+        aiNodeGroupPreview: {
+          id: previewId,
+          status: 'error',
+          boxName: 'AI 预览',
+          connectedNodeId: connectToId,
+          viewParentId: state.viewParentId,
+          x: centerX - 180,
+          y: centerY - 110,
+          width: 360,
+          height: 220,
+          nodes: [],
+          edges: [],
+          error: '找不到连接节点',
+        },
+      });
+      return;
+    }
+
+    set({
+      aiNodeGroupPreview: {
+        id: previewId,
+        status: 'running',
+        boxName: `围绕「${connectedNode.label}」生成中`,
+        connectedNodeId: connectToId,
+        viewParentId: state.viewParentId,
+        x: centerX - 180,
+        y: centerY - 110,
+        width: 360,
+        height: 220,
+        nodes: [],
+        edges: [],
+      },
+    });
+
+    try {
+      const context = createNodeGroupContext(state.nodes, state.edges, connectToId, state.viewParentId);
+      const text = await generateChatText(readAiConfig(), buildNodeGroupDraftMessages(context));
+      const draft = parseNodeGroupDraft(text);
+      set((current) => {
+        if (current.aiNodeGroupPreview?.id !== previewId) return current;
+        return {
+          aiNodeGroupPreview: layoutNodeGroupDraft(
+            draft,
+            connectToId,
+            state.viewParentId,
+            centerX,
+            centerY,
+          ),
+        };
+      });
+    } catch (caught) {
+      set((current) => {
+        if (current.aiNodeGroupPreview?.id !== previewId) return current;
+        return {
+          aiNodeGroupPreview: {
+            ...current.aiNodeGroupPreview,
+            status: 'error',
+            error: caught instanceof Error ? caught.message : 'AI 生成节点组失败',
+          },
+        };
+      });
+    }
+  },
+
+  approveAiNodeGroupPreview: () => {
+    const preview = get().aiNodeGroupPreview;
+    if (!preview || preview.status !== 'ready' || preview.nodes.length === 0) return;
+    captureHistorySnapshot();
+    const now = new Date().toISOString();
+    set((state) => {
+      const tempToRealId = new Map<string, string>();
+      const nextNodes: MindNode[] = preview.nodes.map((node) => {
+        const id = uuidv4();
+        tempToRealId.set(node.tempId, id);
+        return {
+          id,
+          label: node.label,
+          type: node.type,
+          layer: nodeLayerForType(node.type),
+          parent_id: preview.viewParentId,
+          content: node.content,
+          tags: node.tags ?? [],
+          status: node.type === 'goal' || node.type === 'task' ? 'active' : undefined,
+          x: node.x,
+          y: node.y,
+          created_at: now,
+          updated_at: now,
+        };
+      });
+      const group = normalizeNetworkGroup(
+        {
+          id: uuidv4(),
+          name: preview.boxName,
+          color: GROUP_COLORS[state.groups.length % GROUP_COLORS.length],
+          node_ids: nextNodes.map((node) => node.id),
+          parent_id: preview.viewParentId,
+          x: preview.x,
+          y: preview.y,
+          width: preview.width,
+          height: preview.height,
+          created_at: now,
+        },
+        state.groups.length,
+      );
+      let nextEdges = state.edges;
+      for (const draftEdge of preview.edges) {
+        const source = draftEdge.sourceTempId === 'connected'
+          ? preview.connectedNodeId
+          : tempToRealId.get(draftEdge.sourceTempId);
+        const target = draftEdge.targetTempId === 'connected'
+          ? preview.connectedNodeId
+          : tempToRealId.get(draftEdge.targetTempId);
+        if (!source || !target || source === target) continue;
+        const edge: MindEdge = {
+          id: uuidv4(),
+          source,
+          target,
+          source_kind: 'node',
+          target_kind: 'node',
+          type: draftEdge.type,
+          label: draftEdge.label,
+          weight: 0.7,
+        };
+        const exists = nextEdges.some(
+          (item) =>
+            !item.derived_from_edge_id &&
+            edgeConnects(item, edge.source, edge.target, edge.source_kind, edge.target_kind, edge.type),
+        );
+        if (!exists) nextEdges = [...nextEdges, edge];
+      }
+      const allNodes = [...state.nodes, ...nextNodes];
+      const groups = [...state.groups, group];
+      const edges = syncDerivedGroupEdges(groups, nextEdges);
+      persistGraph(allNodes, edges, groups);
+      return {
+        nodes: allNodes,
+        edges,
+        groups,
+        aiNodeGroupPreview: null,
+        selectedNodeId: nextNodes[0]?.id ?? null,
+        selectedNodeIds: nextNodes[0] ? [nextNodes[0].id] : [],
+        selectedGroupId: group.id,
+        selectedGroupIds: [group.id],
+        selectedEdgeId: null,
+      };
+    });
+  },
+
+  rejectAiNodeGroupPreview: () => set({ aiNodeGroupPreview: null }),
 
   addNode: (input) => {
     const now = new Date().toISOString();
