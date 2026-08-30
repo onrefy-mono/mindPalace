@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { useFocusStore } from '../../stores/focusStore';
 import { useGraphStore } from '../../stores/graphStore';
@@ -75,6 +75,14 @@ interface EdgeLabelEditorState {
   edgeId: string;
   value: string;
   initialValue: string;
+  left: number;
+  top: number;
+  width: number;
+}
+
+interface BoxTitleEditorState {
+  groupId: string;
+  value: string;
   left: number;
   top: number;
   width: number;
@@ -333,6 +341,13 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   const enterSubnet = useGraphStore((s) => s.enterSubnet);
   const updateNode = useGraphStore((s) => s.updateNode);
   const removeNodes = useGraphStore((s) => s.removeNodes);
+  const createShortcutNode = useGraphStore((s) => s.createShortcutNode);
+  const jumpToShortcutTarget = useGraphStore((s) => s.jumpToShortcutTarget);
+  const shortcutNotice = useGraphStore((s) => s.shortcutNotice);
+  const shortcutReturnPrompt = useGraphStore((s) => s.shortcutReturnPrompt);
+  const returnToShortcutSource = useGraphStore((s) => s.returnToShortcutSource);
+  const dismissShortcutReturnPrompt = useGraphStore((s) => s.dismissShortcutReturnPrompt);
+  const clearShortcutNotice = useGraphStore((s) => s.clearShortcutNotice);
   const syncNodeGroupMembership = useGraphStore((s) => s.syncNodeGroupMembership);
   const commitGroupMove = useGraphStore((s) => s.commitGroupMove);
   const commitGroupResize = useGraphStore((s) => s.commitGroupResize);
@@ -342,6 +357,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   const updateGroupViewNodeOrder = useGraphStore((s) => s.updateGroupViewNodeOrder);
   const removeNodeFromGroup = useGraphStore((s) => s.removeNodeFromGroup);
   const commitListDrag = useGraphStore((s) => s.commitListDrag);
+  const cutSelectionToClipboard = useGraphStore((s) => s.cutSelectionToClipboard);
+  const pasteNodeClipboard = useGraphStore((s) => s.pasteNodeClipboard);
 
   const boxInteractionRef = useRef<BoxInteraction | null>(null);
 
@@ -374,6 +391,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     updateNodePosition,
     updateNode,
     removeNodes,
+    createShortcutNode,
+    jumpToShortcutTarget,
     syncNodeGroupMembership,
     commitGroupMove,
     commitGroupResize,
@@ -383,6 +402,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     updateGroupViewNodeOrder,
     removeNodeFromGroup,
     commitListDrag,
+    cutSelectionToClipboard,
+    pasteNodeClipboard,
   });
   storeRef.current = {
     linkMode,
@@ -411,6 +432,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     updateNodePosition,
     updateNode,
     removeNodes,
+    createShortcutNode,
+    jumpToShortcutTarget,
     syncNodeGroupMembership,
     commitGroupMove,
     commitGroupResize,
@@ -420,6 +443,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     updateGroupViewNodeOrder,
     removeNodeFromGroup,
     commitListDrag,
+    cutSelectionToClipboard,
+    pasteNodeClipboard,
   };
 
   const focusItems = useFocusStore((s) => s.items);
@@ -435,6 +460,8 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   const [contextMenu, setContextMenu] = useState<MenuState | null>(null);
   const [labelEditor, setLabelEditor] = useState<LabelEditorState | null>(null);
   const [edgeLabelEditor, setEdgeLabelEditor] = useState<EdgeLabelEditorState | null>(null);
+  const [boxTitleEditor, setBoxTitleEditor] = useState<BoxTitleEditorState | null>(null);
+  const [pendingFocusNodeId, setPendingFocusNodeId] = useState<string | null>(null);
   const [boxSelectUi, setBoxSelectUi] = useState<{
     x: number;
     y: number;
@@ -445,6 +472,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   setBoxSelectUiRef.current = setBoxSelectUi;
   const labelInputRef = useRef<HTMLInputElement>(null);
   const edgeLabelInputRef = useRef<HTMLInputElement>(null);
+  const boxTitleInputRef = useRef<HTMLInputElement>(null);
 
   const completeOrDeleteNode = (node: SimNode) => {
     if (!isQuickDeleteNode(node)) return false;
@@ -511,6 +539,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     () => new Map(visibleNodes.map((node) => [node.id, node])),
     [visibleNodes],
   );
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
 
   const coveredNodeEdgeKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -636,13 +665,17 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   const buildSimNodes = useMemo((): SimNode[] => {
     return perfTime('graph:build-sim-nodes', () => {
       return visibleNodes.map((node) => {
+        const shortcutTarget = node.shortcut_target_id ? nodeById.get(node.shortcut_target_id) : undefined;
+        const displayNode = shortcutTarget ?? node;
         const isFocus = activeFocusNodeIds.has(node.id);
         const isNeighbor = focusNeighborIds.has(node.id) && !isFocus;
         const sim: SimNode = {
           id: node.id,
-          label: node.label,
-          nodeType: node.type,
-          status: node.status,
+          label: displayNode.label,
+          nodeType: displayNode.type,
+          status: displayNode.status,
+          isShortcut: Boolean(node.shortcut_target_id),
+          shortcutTargetMissing: Boolean(node.shortcut_target_id && !shortcutTarget),
           accentColor: focusNodeColorById.get(node.id),
           isFocus,
           isNeighbor,
@@ -674,6 +707,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     });
   }, [
     visibleNodes,
+    nodeById,
     activeFocusNodeIds,
     focusNeighborIds,
     focusNodeColorById,
@@ -750,6 +784,13 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
   }, [edgeLabelEditor]);
 
   useEffect(() => {
+    if (boxTitleEditor) {
+      boxTitleInputRef.current?.focus();
+      boxTitleInputRef.current?.select();
+    }
+  }, [boxTitleEditor]);
+
+  useEffect(() => {
     if (labelEditor && !nodes.some((node) => node.id === labelEditor.nodeId)) {
       setLabelEditor(null);
     }
@@ -760,6 +801,36 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       setEdgeLabelEditor(null);
     }
   }, [edgeLabelEditor, edges]);
+
+  useEffect(() => {
+    if (boxTitleEditor && !groups.some((group) => group.id === boxTitleEditor.groupId)) {
+      setBoxTitleEditor(null);
+    }
+  }, [boxTitleEditor, groups]);
+
+  useEffect(() => {
+    if (!shortcutNotice) return;
+    const timer = window.setTimeout(clearShortcutNotice, 2400);
+    return () => window.clearTimeout(timer);
+  }, [clearShortcutNotice, shortcutNotice]);
+
+  useEffect(() => {
+    if (shortcutReturnPrompt?.targetNodeId) {
+      setPendingFocusNodeId(shortcutReturnPrompt.targetNodeId);
+    }
+  }, [shortcutReturnPrompt?.targetNodeId]);
+
+  useEffect(() => {
+    if (!shortcutReturnPrompt) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dismissShortcutReturnPrompt();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dismissShortcutReturnPrompt, shortcutReturnPrompt]);
 
   const commitLabelEdit = () => {
     if (!labelEditor) return;
@@ -781,6 +852,16 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     setEdgeLabelEditor(null);
   };
 
+  const commitBoxTitleEdit = () => {
+    if (!boxTitleEditor) return;
+    const next = boxTitleEditor.value.trim();
+    const group = groups.find((item) => item.id === boxTitleEditor.groupId);
+    if (group && next && next !== group.name) {
+      updateGroup(boxTitleEditor.groupId, { name: next });
+    }
+    setBoxTitleEditor(null);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -788,6 +869,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
         else if (linkMode) cancelLinkMode();
         setLabelEditor(null);
         setEdgeLabelEditor(null);
+        setBoxTitleEditor(null);
         setContextMenu(null);
       }
     };
@@ -1171,6 +1253,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       storeRef.current.setSelectedNode(node.id);
       setContextMenu(null);
       setEdgeLabelEditor(null);
+      setBoxTitleEditor(null);
       setLabelEditor({
         nodeId: node.id,
         value: node.label,
@@ -1187,6 +1270,7 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       storeRef.current.setSelectedEdge(edgeId);
       setContextMenu(null);
       setLabelEditor(null);
+      setBoxTitleEditor(null);
       const value = link.label?.trim() || linkMidlabel(link);
       setEdgeLabelEditor({
         edgeId,
@@ -2214,8 +2298,16 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       endCanvasNavigation();
     };
 
-    const onWindowKeyDown = (event: KeyboardEvent) => {
+  const onWindowKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'x') {
+        if (storeRef.current.cutSelectionToClipboard()) event.preventDefault();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        if (storeRef.current.pasteNodeClipboard()) event.preventDefault();
+        return;
+      }
       if (
         (event.key === 'Delete' ||
           event.key === 'Del' ||
@@ -2483,6 +2575,12 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
       })
       .on('dblclick', (event, d) => {
         event.stopPropagation();
+        const raw = nodes.find((n) => n.id === d.id);
+        if (raw?.shortcut_target_id) {
+          event.preventDefault();
+          storeRef.current.jumpToShortcutTarget(d.id);
+          return;
+        }
         const [lx, ly] = d3.pointer(event, event.currentTarget as SVGGElement);
         const labelStartX = d.radius + 8;
         if (lx >= labelStartX && lx <= labelStartX + 220 && ly >= -20 && ly <= 20) {
@@ -2495,10 +2593,35 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
           completeOrDeleteNode(d);
           return;
         }
-        const raw = nodes.find((n) => n.id === d.id);
         if (raw && canEnterSubnet(raw)) {
           storeRef.current.enterSubnet(d.id);
         }
+      })
+      .on('contextmenu', (event, d) => {
+        event.preventDefault();
+        event.stopPropagation();
+        storeRef.current.setSelectedNode(d.id);
+        const [gx, gy] = d3.pointer(event, root.node());
+        const raw = nodes.find((node) => node.id === d.id);
+        openMenu(event.clientX, event.clientY, [
+          ...(raw?.shortcut_target_id
+            ? [{
+                id: 'jump-shortcut',
+                label: '跳转到原节点',
+                onClick: () => storeRef.current.jumpToShortcutTarget(d.id),
+              }]
+            : [{
+                id: 'shortcut',
+                label: '创建快捷方式',
+                onClick: () => storeRef.current.createShortcutNode(d.id, gx + 90, gy + 40),
+              }]),
+          {
+            id: 'delete',
+            label: '删除节点',
+            danger: true,
+            onClick: () => storeRef.current.removeNodes([d.id]),
+          },
+        ]);
       });
 
     nodeSelection.each(function (d) {
@@ -2613,6 +2736,11 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
           .on('dblclick', (event, d) => {
             event.preventDefault();
             event.stopPropagation();
+            const raw = nodes.find((node) => node.id === d.id);
+            if (raw?.shortcut_target_id) {
+              storeRef.current.jumpToShortcutTarget(d.id);
+              return;
+            }
             openLabelEditor(event as MouseEvent, d);
           });
         lg.append('rect').attr('class', 'type-tag-bg');
@@ -3302,6 +3430,10 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
 
           const titleDrag = d3
             .drag<SVGRectElement, NetworkBoxDatum>()
+            .filter((event) => {
+              if (event.button !== 0) return false;
+              return (event.detail ?? 1) < 2;
+            })
             .container(function () {
               return graphRef.current.root?.node() ?? (this.parentNode as SVGGElement);
             })
@@ -3414,6 +3546,26 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
               syncBoxTransform(groupEl, { ...d, x: active.visualX, y: active.visualY }, null);
             });
 
+          const openBoxTitleEditor = (event: MouseEvent, d: NetworkBoxDatum) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const currentSvg = svgRef.current;
+            const transform = currentSvg ? d3.zoomTransform(currentSvg) : d3.zoomIdentity;
+            const left = transform.x + (d.x + 10) * transform.k;
+            const top = transform.y + (d.y + NETWORK_BOX_TITLE_HEIGHT / 2) * transform.k;
+            storeRef.current.setSelectedGroup(d.id);
+            setContextMenu(null);
+            setLabelEditor(null);
+            setEdgeLabelEditor(null);
+            setBoxTitleEditor({
+              groupId: d.id,
+              value: d.name,
+              left: Math.max(12, left),
+              top: Math.max(12, top),
+              width: Math.min(340, Math.max(160, (d.width - 76) * transform.k)),
+            });
+          };
+
           g.select<SVGRectElement>('.box-title').call(titleDrag);
           g.select<SVGRectElement>('.box-body').on('dblclick', (event, d) => {
             if ((event.target as Element).closest('.box-edge-resize-hit')) return;
@@ -3425,16 +3577,11 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
               : [d.x + d.width / 2, d.y + d.height / 2];
             onCreateRef.current({ x, y });
           });
-          g.select<SVGRectElement>('.box-title').on('dblclick', (event, d) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const nextName = window.prompt('修改 Box 名称', d.name);
-            if (nextName === null) return;
-            const name = nextName.trim();
-            if (name && name !== d.name) {
-              storeRef.current.updateGroup(d.id, { name });
-            }
-          });
+          g.select<SVGRectElement>('.box-title').on('dblclick', openBoxTitleEditor);
+          g.select<SVGTextElement>('.box-title-text')
+            .on('pointerdown', (event) => event.stopPropagation())
+            .on('mousedown', (event) => event.stopPropagation())
+            .on('dblclick', openBoxTitleEditor);
 
           const resizeDrag = (edge: BoxResizeEdge) => d3
             .drag<SVGRectElement, NetworkBoxDatum>()
@@ -3745,6 +3892,83 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
     ? pendingTarget.name
     : pendingTarget?.label;
 
+  const focusGraphNodes = useCallback((nodeIds: string[]) => {
+    const svg = svgRef.current;
+    const zoom = zoomRef.current;
+    const container = containerRef.current;
+    if (!svg || !zoom || !container) return false;
+    const selected = graphRef.current.simNodes.filter((node) => nodeIds.includes(node.id));
+    if (selected.length === 0) return false;
+
+    const extents = selected.map((node) => {
+      if (node.viewMode === 'list') {
+        const halfWidth = (node.listCardWidth ?? 220) / 2 + 24;
+        const halfHeight = (node.listCardHeight ?? 34) / 2 + 24;
+        return {
+          minX: (node.x ?? 0) - halfWidth,
+          maxX: (node.x ?? 0) + halfWidth,
+          minY: (node.y ?? 0) - halfHeight,
+          maxY: (node.y ?? 0) + halfHeight,
+        };
+      }
+      const radius = Math.max(48, node.radius + 36);
+      return {
+        minX: (node.x ?? 0) - radius,
+        maxX: (node.x ?? 0) + radius,
+        minY: (node.y ?? 0) - radius,
+        maxY: (node.y ?? 0) + radius,
+      };
+    });
+
+    const minX = Math.min(...extents.map((item) => item.minX));
+    const maxX = Math.max(...extents.map((item) => item.maxX));
+    const minY = Math.min(...extents.map((item) => item.minY));
+    const maxY = Math.max(...extents.map((item) => item.maxY));
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const boundsWidth = Math.max(1, maxX - minX);
+    const boundsHeight = Math.max(1, maxY - minY);
+    const padding = 96;
+    const fitScale = Math.min(
+      (container.clientWidth - padding) / boundsWidth,
+      (container.clientHeight - padding) / boundsHeight,
+    );
+    const currentScale = d3.zoomTransform(svg).k;
+    const scale = selected.length === 1
+      ? Math.max(1.15, Math.min(1.8, currentScale))
+      : Math.max(0.35, Math.min(1.8, fitScale));
+    const transform = d3.zoomIdentity
+      .translate(container.clientWidth / 2 - centerX * scale, container.clientHeight / 2 - centerY * scale)
+      .scale(scale);
+
+    d3.select(svg).transition().duration(260).call(zoom.transform, transform);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!pendingFocusNodeId) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (focusGraphNodes([pendingFocusNodeId])) {
+        setPendingFocusNodeId(null);
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [buildSimNodes, focusGraphNodes, pendingFocusNodeId, viewParentId]);
+
+  const shortcutPromptTarget = shortcutReturnPrompt
+    ? nodes.find((node) => node.id === shortcutReturnPrompt.targetNodeId)
+    : undefined;
+  const shortcutPromptSource = shortcutReturnPrompt
+    ? nodes.find((node) => node.id === shortcutReturnPrompt.shortcutNodeId)
+    : undefined;
+
+  const handleReturnToShortcut = () => {
+    const sourceId = shortcutReturnPrompt?.shortcutNodeId ?? null;
+    if (returnToShortcutSource() && sourceId) {
+      setPendingFocusNodeId(sourceId);
+    }
+  };
+
   const handleZoom = (factor: number) => {
     const svg = svgRef.current;
     const zoom = zoomRef.current;
@@ -3870,6 +4094,91 @@ export function MindGraph({ onOpenCreateNode }: MindGraphProps) {
           }}
           aria-label="编辑连线文字"
         />
+      )}
+
+      {boxTitleEditor && (
+        <input
+          ref={boxTitleInputRef}
+          value={boxTitleEditor.value}
+          onChange={(event) =>
+            setBoxTitleEditor((current) =>
+              current ? { ...current, value: event.target.value } : current,
+            )
+          }
+          onBlur={commitBoxTitleEdit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commitBoxTitleEdit();
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setBoxTitleEditor(null);
+            }
+          }}
+          className="absolute z-30 rounded-md border border-blue-400/60 bg-slate-950/95 px-2 py-1 text-xs font-semibold text-white shadow-xl shadow-black/30 outline-none ring-2 ring-blue-500/20"
+          style={{
+            left: boxTitleEditor.left,
+            top: boxTitleEditor.top,
+            width: boxTitleEditor.width,
+            transform: 'translateY(-50%)',
+          }}
+          aria-label="编辑 Box 名称"
+        />
+      )}
+
+      {shortcutNotice && (
+        <div className="pointer-events-none absolute left-1/2 top-5 z-30 -translate-x-1/2 rounded-lg border border-amber-400/30 bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-100 shadow-xl shadow-black/30">
+          {shortcutNotice}
+        </div>
+      )}
+
+      {shortcutReturnPrompt && (
+        <div className="absolute left-1/2 top-4 z-50 w-[min(92vw,520px)] -translate-x-1/2">
+          <div className="rounded-xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl shadow-black/35">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-widest text-slate-500">快捷方式跳转</div>
+                <h3 className="mt-1 text-base font-semibold text-white">已跳转到原节点</h3>
+              </div>
+              <button
+                type="button"
+                onClick={dismissShortcutReturnPrompt}
+                className="rounded-md border border-white/10 px-2 py-1 text-xs text-slate-400 hover:bg-white/5 hover:text-white"
+                aria-label="关闭返回提示"
+              >
+                ×
+              </button>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              当前已定位到
+              <span className="mx-1 font-medium text-sky-200">
+                {shortcutPromptTarget?.label ?? '原节点'}
+              </span>
+              ，是否返回刚才的快捷方式
+              <span className="mx-1 font-medium text-slate-100">
+                {shortcutPromptSource?.label ?? '节点'}
+              </span>
+              ？
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={handleReturnToShortcut}
+                className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500"
+              >
+                返回快捷方式
+              </button>
+              <button
+                type="button"
+                onClick={dismissShortcutReturnPrompt}
+                className="rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white"
+              >
+                留在原节点
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {visibleNodes.length === 0 && (

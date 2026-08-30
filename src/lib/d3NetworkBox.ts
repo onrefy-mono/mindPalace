@@ -59,6 +59,8 @@ export function applyNetworkBoxVisual(
     .attr('fill', (d) => (d.isSelected ? '#f8fafc' : '#cbd5e1'))
     .attr('font-size', 12)
     .attr('font-weight', 700)
+    .style('pointer-events', 'all')
+    .style('cursor', 'text')
     .text((d) => d.name);
 
   selection
@@ -264,7 +266,7 @@ export function mountNetworkBoxStructure(
       g.append('rect').attr('class', 'box-title').style('cursor', 'move');
     }
     if (!g.select('.box-title-text').node()) {
-      g.append('text').attr('class', 'box-title-text').style('pointer-events', 'none');
+      g.append('text').attr('class', 'box-title-text').style('pointer-events', 'all').style('cursor', 'text');
     }
     if (!g.select('.box-count').node()) {
       g.append('text').attr('class', 'box-count').style('pointer-events', 'none');

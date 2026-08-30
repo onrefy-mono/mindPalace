@@ -18,6 +18,8 @@ export function NodeDetailPanel() {
   const groups = useGraphStore((s) => s.groups);
   const updateNode = useGraphStore((s) => s.updateNode);
   const removeNode = useGraphStore((s) => s.removeNode);
+  const createShortcutNode = useGraphStore((s) => s.createShortcutNode);
+  const jumpToShortcutTarget = useGraphStore((s) => s.jumpToShortcutTarget);
   const addEdge = useGraphStore((s) => s.addEdge);
   const removeEdge = useGraphStore((s) => s.removeEdge);
   const updateEdge = useGraphStore((s) => s.updateEdge);
@@ -88,9 +90,14 @@ export function NodeDetailPanel() {
     );
   }
 
-  const meta = NODE_TYPE_META[selectedNode.type];
-  const supportsStatus = selectedNode.type === 'goal' || selectedNode.type === 'task';
-  const nodeStatus = selectedNode.status ?? 'active';
+  const shortcutTarget = selectedNode.shortcut_target_id
+    ? nodes.find((node) => node.id === selectedNode.shortcut_target_id)
+    : undefined;
+  const displayNode = shortcutTarget ?? selectedNode;
+  const isShortcut = Boolean(selectedNode.shortcut_target_id);
+  const meta = NODE_TYPE_META[displayNode.type];
+  const supportsStatus = displayNode.type === 'goal' || displayNode.type === 'task';
+  const nodeStatus = displayNode.status ?? 'active';
   const visibleNodeEdges = edges.filter(
     (edge) =>
       (edge.source_kind ?? 'node') === 'node' &&
@@ -131,16 +138,48 @@ export function NodeDetailPanel() {
         </div>
         <NodeFieldInput
           nodeId={selectedNode.id}
-          savedValue={selectedNode.label}
+          savedValue={displayNode.label}
           field="label"
-          onSave={(value) => debouncedUpdate(selectedNode.id, { label: value })}
-          className="mt-2 w-full rounded-lg border border-transparent bg-transparent px-0 text-lg font-semibold text-white outline-none focus:border-white/10 focus:bg-white/5 focus:px-2"
+          onSave={(value) => {
+            if (!isShortcut) debouncedUpdate(selectedNode.id, { label: value });
+          }}
+          disabled={isShortcut}
+          className="mt-2 w-full rounded-lg border border-transparent bg-transparent px-0 text-lg font-semibold text-white outline-none focus:border-white/10 focus:bg-white/5 focus:px-2 disabled:cursor-default disabled:text-slate-200"
         />
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-white/8 px-2 py-0.5 text-slate-300">{meta.label}</span>
           <span className="text-slate-500">{meta.psychology}</span>
+          {isShortcut && (
+            <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">
+              快捷方式
+            </span>
+          )}
         </div>
-        {selectedNode.type === 'project' && (
+        {isShortcut && (
+          <div className="mt-3 rounded-lg border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+            <div className="truncate">
+              指向：{shortcutTarget ? shortcutTarget.label : '原节点不存在'}
+            </div>
+            <button
+              type="button"
+              onClick={() => jumpToShortcutTarget(selectedNode.id)}
+              className="mt-2 text-sky-300 hover:text-sky-200 disabled:cursor-not-allowed disabled:text-slate-500"
+              disabled={!shortcutTarget}
+            >
+              跳转到原节点 →
+            </button>
+          </div>
+        )}
+        {!isShortcut && (
+          <button
+            type="button"
+            onClick={() => createShortcutNode(selectedNode.id)}
+            className="mt-2 mr-3 text-xs text-sky-400 hover:text-sky-300"
+          >
+            创建快捷方式 ↗
+          </button>
+        )}
+        {!isShortcut && selectedNode.type === 'project' && (
           <button
             type="button"
             onClick={() => enterSubnet(selectedNode.id)}
@@ -157,11 +196,12 @@ export function NodeDetailPanel() {
           <div className="grid grid-cols-2 gap-1.5">
             {NODE_TYPES.map((type) => {
               const m = NODE_TYPE_META[type];
-              const active = selectedNode.type === type;
+              const active = displayNode.type === type;
               return (
                 <button
                   key={type}
                   type="button"
+                  disabled={isShortcut}
                   onClick={() =>
                     updateNode(selectedNode.id, {
                       type,
@@ -172,7 +212,7 @@ export function NodeDetailPanel() {
                   className={`rounded-lg border px-2 py-1.5 text-left text-xs ${
                     active
                       ? 'border-blue-400/40 bg-blue-500/10 text-blue-200'
-                      : 'border-white/8 text-slate-400 hover:bg-white/5'
+                      : 'border-white/8 text-slate-400 hover:bg-white/5 disabled:hover:bg-transparent'
                   }`}
                 >
                   <div className="font-medium">{m.label}</div>
@@ -200,10 +240,11 @@ export function NodeDetailPanel() {
                         status: option.value as 'active' | 'done',
                       })
                     }
+                    disabled={isShortcut}
                     className={`rounded-lg border px-2 py-1.5 text-left text-xs ${
                       active
                         ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-200'
-                        : 'border-white/8 text-slate-400 hover:bg-white/5'
+                        : 'border-white/8 text-slate-400 hover:bg-white/5 disabled:hover:bg-transparent'
                     }`}
                   >
                     {option.label}
@@ -218,12 +259,15 @@ export function NodeDetailPanel() {
           <div className="mb-2 text-xs text-slate-500">内容</div>
           <NodeFieldTextarea
             nodeId={selectedNode.id}
-            savedValue={selectedNode.content ?? ''}
+            savedValue={displayNode.content ?? ''}
             field="content"
-            onSave={(value) => debouncedUpdate(selectedNode.id, { content: value || undefined })}
+            onSave={(value) => {
+              if (!isShortcut) debouncedUpdate(selectedNode.id, { content: value || undefined });
+            }}
+            disabled={isShortcut}
             rows={4}
             placeholder="节点说明、上下文..."
-            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-blue-400/40"
+            className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-blue-400/40 disabled:cursor-default disabled:text-slate-300"
           />
         </section>
 
@@ -281,12 +325,14 @@ function NodeFieldInput({
   field,
   onSave,
   className,
+  disabled,
 }: {
   nodeId: string;
   savedValue: string;
   field: string;
   onSave: (value: string) => void;
   className?: string;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(savedValue);
 
@@ -305,9 +351,11 @@ function NodeFieldInput({
       data-node-field={field}
       value={draft}
       onChange={(e) => {
+        if (disabled) return;
         setDraft(e.target.value);
         onSave(e.target.value);
       }}
+      disabled={disabled}
       className={className}
     />
   );
@@ -321,6 +369,7 @@ function NodeFieldTextarea({
   rows,
   placeholder,
   className,
+  disabled,
 }: {
   nodeId: string;
   savedValue: string;
@@ -329,6 +378,7 @@ function NodeFieldTextarea({
   rows: number;
   placeholder?: string;
   className?: string;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(savedValue);
 
@@ -347,9 +397,11 @@ function NodeFieldTextarea({
       data-node-field={field}
       value={draft}
       onChange={(e) => {
+        if (disabled) return;
         setDraft(e.target.value);
         onSave(e.target.value);
       }}
+      disabled={disabled}
       rows={rows}
       placeholder={placeholder}
       className={className}

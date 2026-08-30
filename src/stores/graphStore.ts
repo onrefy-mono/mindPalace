@@ -99,6 +99,20 @@ interface CommitListDragInput {
   targetOrder?: string[];
 }
 
+interface GraphNodeClipboard {
+  nodes: MindNode[];
+  edges: MindEdge[];
+  groups: NodeGroup[];
+  originX: number;
+  originY: number;
+}
+
+export interface ShortcutReturnPrompt {
+  shortcutNodeId: string;
+  shortcutParentId: string | null;
+  targetNodeId: string;
+}
+
 interface GraphState {
   nodes: MindNode[];
   edges: MindEdge[];
@@ -117,6 +131,9 @@ interface GraphState {
   edgeLabelMode: boolean;
   globalTextMode: boolean;
   createPointer: { x: number; y: number } | null;
+  nodeClipboard: GraphNodeClipboard | null;
+  shortcutNotice: string | null;
+  shortcutReturnPrompt: ShortcutReturnPrompt | null;
   load: () => void;
   navigateToGraph: (parentId: string | null) => void;
   enterSubnet: (nodeId: string) => boolean;
@@ -148,6 +165,13 @@ interface GraphState {
   startGenerateNodeGroup: (connectToId: string, x?: number, y?: number) => Promise<void>;
   approveAiNodeGroupPreview: () => void;
   rejectAiNodeGroupPreview: () => void;
+  cutSelectionToClipboard: () => boolean;
+  pasteNodeClipboard: (x?: number, y?: number) => boolean;
+  createShortcutNode: (sourceNodeId: string, x?: number, y?: number) => MindNode | null;
+  jumpToShortcutTarget: (shortcutNodeId: string) => boolean;
+  returnToShortcutSource: () => boolean;
+  dismissShortcutReturnPrompt: () => void;
+  clearShortcutNotice: () => void;
   addNode: (input: AddNodeInput) => MindNode;
   updateNode: (id: string, patch: Partial<MindNode>) => void;
   updateNodePosition: (id: string, x: number, y: number) => void;
@@ -514,6 +538,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   edgeLabelMode: readEdgeLabelMode(),
   globalTextMode: readGlobalTextMode(),
   createPointer: null,
+  nodeClipboard: null,
+  shortcutNotice: null,
+  shortcutReturnPrompt: null,
 
   load: () => {
     const data = loadData();
@@ -524,6 +551,8 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       groups,
       viewParentId: null,
       aiNodeGroupPreview: null,
+      shortcutNotice: null,
+      shortcutReturnPrompt: null,
     });
   },
 
@@ -542,6 +571,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       linkSourceId: null,
       linkSourceKind: 'node',
       aiNodeGroupPreview: null,
+      shortcutReturnPrompt: null,
     });
   },
 
@@ -551,6 +581,122 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     get().navigateToGraph(nodeId);
     return true;
   },
+
+  createShortcutNode: (sourceNodeId, x, y) => {
+    const state = get();
+    const selectedSource = state.nodes.find((node) => node.id === sourceNodeId);
+    const source = selectedSource?.shortcut_target_id
+      ? state.nodes.find((node) => node.id === selectedSource.shortcut_target_id)
+      : selectedSource;
+    if (!selectedSource || !source) {
+      set({ shortcutNotice: '原节点不存在，无法创建快捷方式' });
+      return null;
+    }
+    const now = new Date().toISOString();
+    const node: MindNode = {
+      id: uuidv4(),
+      label: source.label,
+      type: source.type,
+      layer: source.layer,
+      parent_id: state.viewParentId,
+      shortcut_target_id: source.id,
+      content: undefined,
+      tags: [...source.tags],
+      status: source.status,
+      x: x ?? (source.x ?? 0) + 90,
+      y: y ?? (source.y ?? 0) + 60,
+      created_at: now,
+      updated_at: now,
+    };
+    captureHistorySnapshot();
+    set((current) => {
+      const nodes = [...current.nodes, node];
+      let edges = current.edges;
+      let groups = current.groups;
+      if (node.x != null && node.y != null) {
+        const expandRequests: Array<{ groupId: string; nodeIds: string[] }> = [];
+        groups = current.groups.map((group) => {
+          if ((group.parent_id ?? null) !== current.viewParentId) return group;
+          if (!pointInsideNetworkBox(node.x ?? 0, node.y ?? 0, group)) return group;
+          if (group.node_ids.includes(node.id)) return group;
+          expandRequests.push({ groupId: group.id, nodeIds: [node.id] });
+          return { ...group, node_ids: [...group.node_ids, node.id] };
+        });
+        groups = expandGroupsToIncludeNodes(groups, nodes, expandRequests);
+        edges = syncDerivedGroupEdges(groups, edges);
+      }
+      persistGraph(nodes, edges, groups);
+      return {
+        nodes,
+        edges,
+        groups,
+        selectedNodeId: node.id,
+        selectedNodeIds: [node.id],
+        selectedEdgeId: null,
+        selectedGroupId: null,
+        selectedGroupIds: [],
+        shortcutNotice: null,
+      };
+    });
+    return node;
+  },
+
+  jumpToShortcutTarget: (shortcutNodeId) => {
+    const state = get();
+    const shortcut = state.nodes.find((node) => node.id === shortcutNodeId);
+    const targetId = shortcut?.shortcut_target_id;
+    const target = targetId ? state.nodes.find((node) => node.id === targetId) : null;
+    if (!shortcut || !target) {
+      set({ shortcutNotice: '原节点不存在，快捷方式已失效', shortcutReturnPrompt: null });
+      return false;
+    }
+    set({
+      viewParentId: target.parent_id ?? null,
+      selectedNodeId: target.id,
+      selectedNodeIds: [target.id],
+      selectedEdgeId: null,
+      selectedGroupId: null,
+      selectedGroupIds: [],
+      linkSourceId: null,
+      linkSourceKind: 'node',
+      aiNodeGroupPreview: null,
+      shortcutNotice: null,
+      shortcutReturnPrompt: {
+        shortcutNodeId: shortcut.id,
+        shortcutParentId: shortcut.parent_id ?? null,
+        targetNodeId: target.id,
+      },
+    });
+    return true;
+  },
+
+  returnToShortcutSource: () => {
+    const prompt = get().shortcutReturnPrompt;
+    if (!prompt) return false;
+    const shortcut = get().nodes.find((node) => node.id === prompt.shortcutNodeId);
+    if (!shortcut) {
+      set({ shortcutNotice: '快捷方式节点不存在', shortcutReturnPrompt: null });
+      return false;
+    }
+    set({
+      viewParentId: prompt.shortcutParentId,
+      selectedNodeId: shortcut.id,
+      selectedNodeIds: [shortcut.id],
+      selectedEdgeId: null,
+      selectedGroupId: null,
+      selectedGroupIds: [],
+      linkSourceId: null,
+      linkSourceKind: 'node',
+      aiNodeGroupPreview: null,
+      shortcutReturnPrompt: null,
+      shortcutNotice: null,
+    });
+    return true;
+  },
+
+  dismissShortcutReturnPrompt: () => set({ shortcutReturnPrompt: null }),
+
+  clearShortcutNotice: () => set({ shortcutNotice: null }),
 
   setSelectedNode: (id) =>
     set({
@@ -898,6 +1044,131 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   rejectAiNodeGroupPreview: () => set({ aiNodeGroupPreview: null }),
+
+  cutSelectionToClipboard: () => {
+    const state = get();
+    const selectedIds = new Set(state.selectedNodeIds);
+    for (const group of state.groups) {
+      if (state.selectedGroupIds.includes(group.id)) {
+        group.node_ids.forEach((id) => selectedIds.add(id));
+      }
+    }
+    const nodes = state.nodes.filter((node) => selectedIds.has(node.id));
+    if (nodes.length === 0) return false;
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    const edges = state.edges.filter(
+      (edge) =>
+        !edge.derived_from_edge_id &&
+        nodeIds.has(edge.source) &&
+        nodeIds.has(edge.target) &&
+        (edge.source_kind ?? 'node') === 'node' &&
+        (edge.target_kind ?? 'node') === 'node',
+    );
+    const groups = state.groups
+      .filter((group) => state.selectedGroupIds.includes(group.id))
+      .map((group) => ({
+        ...group,
+        node_ids: group.node_ids.filter((id) => nodeIds.has(id)),
+      }))
+      .filter((group) => group.node_ids.length > 0);
+    const xs = nodes.map((node) => node.x ?? 0);
+    const ys = nodes.map((node) => node.y ?? 0);
+    const originX = xs.reduce((sum, value) => sum + value, 0) / xs.length;
+    const originY = ys.reduce((sum, value) => sum + value, 0) / ys.length;
+    const clipboard = {
+      nodes: nodes.map((node) => ({ ...node })),
+      edges: edges.map((edge) => ({ ...edge })),
+      groups: groups.map((group) => ({ ...group, node_ids: [...group.node_ids] })),
+      originX,
+      originY,
+    };
+    captureHistorySnapshot();
+    set({ nodeClipboard: clipboard });
+    get().removeNodes(nodes.map((node) => node.id));
+    return true;
+  },
+
+  pasteNodeClipboard: (x, y) => {
+    const state = get();
+    const clipboard = state.nodeClipboard;
+    if (!clipboard || clipboard.nodes.length === 0) return false;
+    captureHistorySnapshot();
+    const now = new Date().toISOString();
+    const pasteX = x ?? state.createPointer?.x ?? clipboard.originX + 36;
+    const pasteY = y ?? state.createPointer?.y ?? clipboard.originY + 36;
+    const dx = pasteX - clipboard.originX;
+    const dy = pasteY - clipboard.originY;
+    set((current) => {
+      const idMap = new Map<string, string>();
+      const nodes = clipboard.nodes.map((node) => {
+        const id = uuidv4();
+        idMap.set(node.id, id);
+        return {
+          ...node,
+          id,
+          parent_id: current.viewParentId,
+          x: (node.x ?? clipboard.originX) + dx,
+          y: (node.y ?? clipboard.originY) + dy,
+          created_at: now,
+          updated_at: now,
+        };
+      });
+      const edges: MindEdge[] = [];
+      for (const edge of clipboard.edges) {
+        const source = idMap.get(edge.source);
+        const target = idMap.get(edge.target);
+        if (!source || !target) continue;
+        edges.push({
+          ...edge,
+          id: uuidv4(),
+          source,
+          target,
+          source_kind: 'node',
+          target_kind: 'node',
+          derived_from_group_id: undefined,
+          derived_from_edge_id: undefined,
+        });
+      }
+      const groups = clipboard.groups.map((group, index) =>
+        normalizeNetworkGroup(
+          {
+            ...group,
+            id: uuidv4(),
+            node_ids: group.node_ids.map((id) => idMap.get(id)).filter((id): id is string => Boolean(id)),
+            parent_id: current.viewParentId,
+            x: group.x == null ? group.x : group.x + dx,
+            y: group.y == null ? group.y : group.y + dy,
+            created_at: now,
+          },
+          current.groups.length + index,
+        ),
+      ).filter((group) => group.node_ids.length > 0);
+      const allNodes = [...current.nodes, ...nodes];
+      let allEdges = current.edges;
+      for (const edge of edges) {
+        const exists = allEdges.some(
+          (item) =>
+            !item.derived_from_edge_id &&
+            edgeConnects(item, edge.source, edge.target, edge.source_kind, edge.target_kind, edge.type),
+        );
+        if (!exists) allEdges = [...allEdges, edge];
+      }
+      const allGroups = [...current.groups, ...groups];
+      allEdges = syncDerivedGroupEdges(allGroups, allEdges);
+      persistGraph(allNodes, allEdges, allGroups);
+      return {
+        nodes: allNodes,
+        edges: allEdges,
+        groups: allGroups,
+        selectedNodeId: nodes[0]?.id ?? null,
+        selectedNodeIds: nodes.map((node) => node.id),
+        selectedGroupId: groups[0]?.id ?? null,
+        selectedGroupIds: groups.map((group) => group.id),
+        selectedEdgeId: null,
+      };
+    });
+    return true;
+  },
 
   addNode: (input) => {
     const now = new Date().toISOString();

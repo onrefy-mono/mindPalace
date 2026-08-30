@@ -8,6 +8,8 @@ export interface SimNode extends d3.SimulationNodeDatum {
   label: string;
   nodeType: NodeType;
   status?: NodeStatus;
+  isShortcut?: boolean;
+  shortcutTargetMissing?: boolean;
   accentColor?: string;
   isFocus: boolean;
   isNeighbor: boolean;
@@ -636,6 +638,22 @@ export function appendNodeCircle(
       .attr('class', 'list-card-meta')
       .attr('text-anchor', 'end')
       .attr('dominant-baseline', 'central');
+    card
+      .append('text')
+      .attr('class', 'shortcut-badge-list')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'central');
+    shapeG
+      .append('g')
+      .attr('class', 'shortcut-badge')
+      .style('pointer-events', 'none')
+      .call((badge) => {
+        badge.append('circle').attr('class', 'shortcut-badge-bg');
+        badge.append('text')
+          .attr('class', 'shortcut-badge-icon')
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'central');
+      });
   });
 }
 
@@ -677,6 +695,22 @@ export function applyNodeVisual(
     .attr('font-size', (d) => Math.max(14, d.radius + 1))
     .attr('opacity', (d) => (d.viewMode === 'list' ? 0 : nodeOpacity(d)));
 
+  selection.select<SVGGElement>('.shortcut-badge')
+    .style('display', (d) => (d.isShortcut && d.viewMode !== 'list' ? null : 'none'))
+    .attr('transform', (d) => `translate(${d.radius * 0.68},${-d.radius * 0.68})`);
+
+  selection.select<SVGCircleElement>('.shortcut-badge-bg')
+    .attr('r', 7)
+    .attr('fill', (d) => (d.shortcutTargetMissing ? '#7f1d1d' : '#0f172a'))
+    .attr('stroke', (d) => (d.shortcutTargetMissing ? '#fca5a5' : '#38bdf8'))
+    .attr('stroke-width', 1.4);
+
+  selection.select<SVGTextElement>('.shortcut-badge-icon')
+    .attr('fill', (d) => (d.shortcutTargetMissing ? '#fecaca' : '#bae6fd'))
+    .attr('font-size', 9)
+    .attr('font-weight', 800)
+    .text('↗');
+
   selection.select<SVGGElement>('.list-card')
     .style('display', (d) => (d.viewMode === 'list' ? null : 'none'))
     .attr('opacity', (d) => nodeOpacity(d));
@@ -711,7 +745,16 @@ export function applyNodeVisual(
     .attr('y', 0)
     .attr('fill', '#64748b')
     .attr('font-size', 10)
-    .text((d) => typeLabel(d.nodeType));
+    .text((d) => (d.isShortcut ? '快捷方式' : typeLabel(d.nodeType)));
+
+  selection.select<SVGTextElement>('.shortcut-badge-list')
+    .style('display', (d) => (d.isShortcut && d.viewMode === 'list' ? null : 'none'))
+    .attr('x', (d) => -(d.listCardWidth ?? 220) / 2 + 8)
+    .attr('y', -10)
+    .attr('fill', (d) => (d.shortcutTargetMissing ? '#fecaca' : '#bae6fd'))
+    .attr('font-size', 10)
+    .attr('font-weight', 800)
+    .text('↗');
 
   selection.select<SVGRectElement>('.list-card-port-left')
     .attr('x', (d) => -(d.listCardWidth ?? 220) / 2 - 11)

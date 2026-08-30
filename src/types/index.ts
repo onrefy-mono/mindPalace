@@ -47,6 +47,7 @@ export interface MindNode {
   type: NodeType;
   layer: MemoryLayer;
   parent_id: string | null;
+  shortcut_target_id?: string;
   content?: string;
   tags: string[];
   status?: NodeStatus;
